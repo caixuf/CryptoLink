@@ -1,0 +1,66 @@
+# CryptoLink 项目忽略文件
+
+# 构建目录
+build/
+Build/
+build-*/
+
+# CMake 生成的文件
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# 编译产物
+*.o
+*.so
+*.a
+*.dylib
+*.dll
+*.exe
+
+# 可执行文件
+client
+server
+test_*
+
+# IDE 文件
+.vscode/
+.idea/
+*.user
+*.sln
+*.vcproj
+*.vcxproj*
+
+# 日志文件
+*.log
+
+# 调试文件
+*.dSYM/
+*.pdb
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 备份文件
+*~
+*.swp
+*.swo
+.*.swp
+.*.swo
+
+# 临时文件
+*.tmp
+*.temp
+
+# 密钥文件 (如果有的话)
+*.key
+*.pem
+*.crt
+
+# 测试结果
+test_results/
+*.xml
