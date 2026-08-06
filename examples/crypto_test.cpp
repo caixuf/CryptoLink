@@ -1,5 +1,9 @@
 #include <iostream>
-#include <cassert>
+#include <stdexcept>
+
+// CHECK 与 assert 不同：即便在 -DNDEBUG(Release) 下也会保留副作用与判断，
+// 避免"把有副作用的调用放进 assert 导致 Release 下被裁剪"的经典 bug。
+#define CHECK(cond) do { if (!(cond)) throw std::runtime_error("检查失败: " #cond); } while (0)
 #include "RSAKey.h"
 #include "AESKey.h"
 
@@ -9,26 +13,26 @@ void testRSAEncryption() {
     RSAKey rsa1, rsa2;
     
     // 生成密钥对
-    assert(rsa1.generateKeyPair());
-    assert(rsa2.generateKeyPair());
+    CHECK(rsa1.generateKeyPair());
+    CHECK(rsa2.generateKeyPair());
     
     // 交换公钥
     std::string publicKey1 = rsa1.getLocalPublicKey();
     std::string publicKey2 = rsa2.getLocalPublicKey();
     
-    assert(!publicKey1.empty());
-    assert(!publicKey2.empty());
+    CHECK(!publicKey1.empty());
+    CHECK(!publicKey2.empty());
     
-    assert(rsa1.setRemotePublicKey(publicKey2));
-    assert(rsa2.setRemotePublicKey(publicKey1));
+    CHECK(rsa1.setRemotePublicKey(publicKey2));
+    CHECK(rsa2.setRemotePublicKey(publicKey1));
     
     // 测试加密/解密
     std::string plaintext = "Hello, RSA World!";
     std::string encrypted = rsa1.encryptWithRemotePublic(plaintext);
     std::string decrypted = rsa2.decryptWithLocalPrivate(encrypted);
     
-    assert(!encrypted.empty());
-    assert(decrypted == plaintext);
+    CHECK(!encrypted.empty());
+    CHECK(decrypted == plaintext);
     
     std::cout << "RSA 测试通过！" << std::endl;
 }
@@ -39,29 +43,29 @@ void testAESEncryption() {
     AESKey aes1, aes2;
     
     // 生成密钥
-    assert(aes1.generateRawKey());
-    assert(aes2.generateRawKey());
+    CHECK(aes1.generateRawKey());
+    CHECK(aes2.generateRawKey());
     
     // 模拟密钥交换
     std::string key1 = aes1.getLocalKey();
-    assert(!key1.empty());
+    CHECK(!key1.empty());
     
     // 解析密钥格式 key:iv
     size_t colonPos = key1.find(':');
-    assert(colonPos != std::string::npos);
+    CHECK(colonPos != std::string::npos);
     
     std::string keyPart = key1.substr(0, colonPos);
     std::string ivPart = key1.substr(colonPos + 1);
     
-    assert(aes2.setRemotePublicKey(keyPart, ivPart));
+    CHECK(aes2.setRemotePublicKey(keyPart, ivPart));
     
     // 测试加密/解密
     std::string plaintext = "Hello, AES World! 这是一个测试消息。";
     std::string encrypted = aes1.encryptWithLocal(plaintext);
     std::string decrypted = aes2.decryptWithRemote(encrypted);
     
-    assert(!encrypted.empty());
-    assert(decrypted == plaintext);
+    CHECK(!encrypted.empty());
+    CHECK(decrypted == plaintext);
     
     std::cout << "AES 测试通过！" << std::endl;
 }
@@ -72,25 +76,25 @@ void testRSASignature() {
     RSAKey rsa1, rsa2;
     
     // 生成密钥对并交换公钥
-    assert(rsa1.generateKeyPair());
-    assert(rsa2.generateKeyPair());
+    CHECK(rsa1.generateKeyPair());
+    CHECK(rsa2.generateKeyPair());
     
     std::string publicKey1 = rsa1.getLocalPublicKey();
     std::string publicKey2 = rsa2.getLocalPublicKey();
     
-    assert(rsa1.setRemotePublicKey(publicKey2));
-    assert(rsa2.setRemotePublicKey(publicKey1));
+    CHECK(rsa1.setRemotePublicKey(publicKey2));
+    CHECK(rsa2.setRemotePublicKey(publicKey1));
     
     // 测试签名和验证
     std::string data = "Important message to sign";
     std::string signature = rsa1.signWithLocalPrivate(data);
     
-    assert(!signature.empty());
-    assert(rsa2.verifyWithRemotePublic(data, signature));
+    CHECK(!signature.empty());
+    CHECK(rsa2.verifyWithRemotePublic(data, signature));
     
     // 测试篡改检测
     std::string tamperedData = "Tampered message";
-    assert(!rsa2.verifyWithRemotePublic(tamperedData, signature));
+    CHECK(!rsa2.verifyWithRemotePublic(tamperedData, signature));
     
     std::cout << "RSA 签名测试通过！" << std::endl;
 }

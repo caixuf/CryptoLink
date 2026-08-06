@@ -1,5 +1,7 @@
 #include "CryptoWebSocketClient.h"
+#include "CryptoError.h"
 #include <iostream>
+#include <memory>
 #include <jsoncpp/json/json.h>
 
 CryptoWebSocketClient::CryptoWebSocketClient() 
@@ -78,7 +80,7 @@ bool CryptoWebSocketClient::sendEncryptedMessage(const std::string& message) {
         // 使用AES会话密钥加密消息
         std::string encryptedData = aesKey->encryptWithLocal(message);
         
-        Message msg = {ENCRYPTED_DATA, encryptedData};
+        Message msg = {ENCRYPTED_DATA, encryptedData, ""};
         std::string serialized = serializeMessage(msg);
         
         websocketpp::lib::error_code ec;
@@ -134,9 +136,13 @@ void CryptoWebSocketClient::onMessage(websocketpp::connection_hdl hdl, message_p
         // 处理加密消息
         Message parsedMsg = parseMessage(payload);
         if (parsedMsg.type == ENCRYPTED_DATA) {
-            std::string decryptedData = aesKey->decryptWithLocal(parsedMsg.data);
-            if (messageCallback) {
-                messageCallback(decryptedData);
+            try {
+                std::string decryptedData = aesKey->decryptWithLocal(parsedMsg.data);
+                if (messageCallback) {
+                    messageCallback(decryptedData);
+                }
+            } catch (const CryptoError& e) {
+                std::cerr << "解密来自服务端的消息失败: " << e.what() << std::endl;
             }
         }
     }
@@ -149,7 +155,7 @@ void CryptoWebSocketClient::onFail(websocketpp::connection_hdl hdl) {
 
 void CryptoWebSocketClient::performHandshake() {
     // 发送公钥请求
-    Message msg = {PUBLIC_KEY_REQUEST, ""};
+    Message msg = {PUBLIC_KEY_REQUEST, "", ""};
     std::string serialized = serializeMessage(msg);
     
     websocketpp::lib::error_code ec;
@@ -165,26 +171,32 @@ void CryptoWebSocketClient::handleHandshakeMessage(const std::string& message) {
     
     switch (msg.type) {
         case PUBLIC_KEY_RESPONSE: {
-            // 设置服务器公钥
-            rsaKey->setRemotePublicKey(msg.data);
-            
-            // 发送客户端公钥
-            Message response = {PUBLIC_KEY_RESPONSE, rsaKey->getLocalPublicKey()};
-            std::string serialized = serializeMessage(response);
-            
-            websocketpp::lib::error_code ec;
-            wsClient.send(connectionHandle, serialized, websocketpp::frame::opcode::text, ec);
-            
-            // 发送会话密钥（用服务器公钥加密）
-            std::string sessionKey = aesKey->getLocalKey();
-            std::string encryptedSessionKey = rsaKey->encryptWithRemotePublic(sessionKey);
-            
-            Message sessionMsg = {SESSION_KEY, encryptedSessionKey};
-            std::string sessionSerialized = serializeMessage(sessionMsg);
-            wsClient.send(connectionHandle, sessionSerialized, websocketpp::frame::opcode::text, ec);
-            
-            handshakeComplete = true;
-            std::cout << "握手完成！" << std::endl;
+            try {
+                // 设置服务器公钥
+                rsaKey->setRemotePublicKey(msg.data);
+
+                // 发送客户端公钥
+                Message response = {PUBLIC_KEY_RESPONSE, rsaKey->getLocalPublicKey(), ""};
+                std::string serialized = serializeMessage(response);
+
+                websocketpp::lib::error_code ec;
+                wsClient.send(connectionHandle, serialized, websocketpp::frame::opcode::text, ec);
+
+                // 用服务器公钥加密会话密钥，并用自己的私钥对会话密钥签名，
+                // 让服务端可验证会话密钥确实来自本客户端（抵御中间人替换）。
+                std::string sessionKey = aesKey->getLocalKey();
+                std::string encryptedSessionKey = rsaKey->encryptWithRemotePublic(sessionKey);
+                std::string signature = rsaKey->signWithLocalPrivate(sessionKey);
+
+                Message sessionMsg = {SESSION_KEY, encryptedSessionKey, signature};
+                std::string sessionSerialized = serializeMessage(sessionMsg);
+                wsClient.send(connectionHandle, sessionSerialized, websocketpp::frame::opcode::text, ec);
+
+                handshakeComplete = true;
+                std::cout << "握手完成！" << std::endl;
+            } catch (const CryptoError& e) {
+                std::cerr << "握手过程加密失败: " << e.what() << std::endl;
+            }
             break;
         }
         default:
@@ -196,25 +208,28 @@ std::string CryptoWebSocketClient::serializeMessage(const Message& msg) {
     Json::Value root;
     root["type"] = static_cast<int>(msg.type);
     root["data"] = msg.data;
-    
+    if (!msg.signature.empty()) {
+        root["sig"] = msg.signature;
+    }
+
     Json::StreamWriterBuilder builder;
+    builder["indentation"] = "";
     return Json::writeString(builder, root);
 }
 
 CryptoWebSocketClient::Message CryptoWebSocketClient::parseMessage(const std::string& data) {
     Json::Value root;
     Json::CharReaderBuilder builder;
-    Json::CharReader* reader = builder.newCharReader();
-    
+    std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+
+    Message msg{};
     std::string errors;
     bool success = reader->parse(data.c_str(), data.c_str() + data.length(), &root, &errors);
-    delete reader;
-    
-    Message msg;
     if (success) {
         msg.type = static_cast<MessageType>(root["type"].asInt());
         msg.data = root["data"].asString();
+        msg.signature = root.get("sig", "").asString();
     }
-    
+
     return msg;
 }

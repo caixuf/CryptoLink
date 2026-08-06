@@ -23,30 +23,27 @@ public:
     std::string getLocalKey() override;
 
 private:
-    std::string localKey;
-    std::string localIV;
-    std::string remoteKey;
-    std::string remoteIV;
-    
-    AutoSeededRandomPool rng;
-    
-    // 辅助函数：将密钥转换为字符串格式（Base64）
-    std::string keyToString() const;
-    
-    // 辅助函数：从字符串格式加载密钥（Base64）
-    bool stringToKey() const;
-    
+    std::string localKey;    // Base64 编码的本地会话密钥（32 字节）
+    std::string localIV;     // 保留字段：握手时随密钥一起传输（GCM 每条消息使用独立随机 nonce）
+    std::string remoteKey;   // Base64 编码的远程会话密钥
+    std::string remoteIV;    // 保留字段（同上）
+
+    mutable AutoSeededRandomPool rng;
+
     // 辅助函数：Base64编码
     std::string base64Encode(const std::string& data) const;
-    
+
     // 辅助函数：Base64解码
     std::string base64Decode(const std::string& data) const;
-    
-    // 辅助函数：AES加密
-    std::string aesEncrypt(const std::string& plaintext, const std::string& key, const std::string& iv) const;
-    
-    // 辅助函数：AES解密
-    std::string aesDecrypt(const std::string& ciphertext, const std::string& key, const std::string& iv) const;
+
+    // AES-256-GCM 加密。
+    // 输出为 Base64( nonce(12) || ciphertext || tag(16) )，
+    // 每次调用生成独立的随机 nonce，密文自带完整性校验标签。
+    std::string aesEncrypt(const std::string& plaintext, const std::string& key) const;
+
+    // AES-256-GCM 解密并校验完整性。
+    // 若数据被篡改或密钥不匹配，会抛出 CryptoError。
+    std::string aesDecrypt(const std::string& ciphertext, const std::string& key) const;
 };
 
 #endif // AES_KEY_H

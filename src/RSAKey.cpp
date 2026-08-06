@@ -1,4 +1,5 @@
 #include "RSAKey.h"
+#include "CryptoError.h"
 #include <cryptopp/rsa.h>
 #include <cryptopp/pssr.h>
 #include <cryptopp/hex.h>
@@ -81,8 +82,7 @@ std::string RSAKey::decryptWithLocalPrivate(const std::string& ciphertext) {
         
         return recovered;
     } catch (const Exception& e) {
-        std::cerr << "使用本地私钥解密失败: " << e.what() << std::endl;
-        return "";
+        throw CryptoError(std::string("使用本地私钥解密失败: ") + e.what());
     }
 }
 
@@ -99,8 +99,7 @@ std::string RSAKey::encryptWithRemotePublic(const std::string& plaintext) {
         
         return base64Encode(ciphertext);
     } catch (const Exception& e) {
-        std::cerr << "使用远程公钥加密失败: " << e.what() << std::endl;
-        return "";
+        throw CryptoError(std::string("使用远程公钥加密失败: ") + e.what());
     }
 }
 
@@ -128,14 +127,14 @@ std::string RSAKey::decryptWithRemotePublic(const std::string& ciphertext) {
 std::string RSAKey::signWithLocalPrivate(const std::string& data) {
     try {
         std::string signature;
-        RSASS<PSSR, SHA256>::Signer signer(*localPrivateKey);
-        
+        RSASS<PSS, SHA256>::Signer signer(*localPrivateKey);
+
         StringSource ss(data, true,
             new SignerFilter(rng, signer,
                 new StringSink(signature)
             )
         );
-        
+
         return base64Encode(signature);
     } catch (const Exception& e) {
         std::cerr << "使用本地私钥签名失败: " << e.what() << std::endl;
@@ -146,16 +145,20 @@ std::string RSAKey::signWithLocalPrivate(const std::string& data) {
 bool RSAKey::verifyWithRemotePublic(const std::string& data, const std::string& signature) {
     try {
         std::string decoded = base64Decode(signature);
-        RSASS<PSSR, SHA256>::Verifier verifier(*remotePublicKey);
-        
+        RSASS<PSS, SHA256>::Verifier verifier(*remotePublicKey);
+
+        // 分离式（detached）签名验证：输入为 data || signature，
+        // 校验失败时 THROW_EXCEPTION 会抛出异常。
+        bool result = false;
         StringSource ss(data + decoded, true,
             new SignatureVerificationFilter(verifier,
-                nullptr,
-                SignatureVerificationFilter::PUT_RESULT
+                new ArraySink(reinterpret_cast<byte*>(&result), sizeof(result)),
+                SignatureVerificationFilter::PUT_RESULT |
+                SignatureVerificationFilter::SIGNATURE_AT_END
             )
         );
-        
-        return true;
+
+        return result;
     } catch (const Exception& e) {
         std::cerr << "使用远程公钥验证签名失败: " << e.what() << std::endl;
         return false;

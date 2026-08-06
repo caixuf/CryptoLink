@@ -66,6 +66,7 @@ private:
     struct Message {
         MessageType type;
         std::string data;
+        std::string signature; // 可选：会话密钥的来源认证签名
     };
     
     std::string serializeMessage(const Message& msg);
