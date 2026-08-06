@@ -7,9 +7,12 @@ CryptoLink 是一个基于 WebSocket 的安全网络通信库，实现了端到�
 ## 主要特性
 
 - **双重加密保护**: RSA + AES 混合加密方案
+- **认证型对称加密 (AEAD)**: AES-256-**GCM**，每条消息独立随机 nonce，自带完整性校验，抵御篡改/翻转攻击
+- **握手身份认证**: 会话密钥交换使用 RSA 签名/验签，抵御中间人替换会话密钥
 - **WebSocket 通信**: 基于 WebSocket 协议的实时通信
-- **密钥交换**: 安全的密钥协商和交换机制
+- **线程安全**: 服务端会话状态由单一 `ClientSession` 结构统一管理并加锁保护
 - **多客户端支持**: 服务端支持多个客户端同时连接
+- **可选协程集成**: 可选接入 [flowcoro](https://github.com/caixuf/flowcoro)（C++20 协程），把 RSA/AES 计算卸载到线程池
 - **跨平台**: 基于 CMake 构建，支持多平台编译
 
 ## 技术架构
@@ -20,10 +23,11 @@ CryptoLink 是一个基于 WebSocket 的安全网络通信库，实现了端到�
    - 数字签名验证
    - 公钥长度: 2048位
 
-2. **对称加密 (AES-256-CBC)**:
-   - 用于高效的数据传输加密
+2. **对称加密 (AES-256-GCM)**:
+   - 认证加密 (AEAD)，用于高效且防篡改的数据传输
    - 密钥长度: 256位
-   - 使用随机IV确保安全性
+   - 每条消息使用独立随机 12 字节 nonce，密文封装为 `nonce || ciphertext || tag`
+   - 内置 128 位认证标签，解密时自动校验完整性，失败抛出 `CryptoError`
 
 ### 通信流程
 1. 建立 WebSocket 连接
@@ -89,18 +93,47 @@ sudo yum install cryptopp-devel boost-devel jsoncpp-devel
 git clone <repository-url>
 cd CryptoLink
 
-# 创建构建目录
-mkdir build
-cd build
-
-# 配置和编译
-cmake ..
-make -j4
+# 配置和编译（默认 Release，构建示例与单元测试）
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
 
 # 运行示例
-./server    # 启动服务端
-./client    # 启动客户端（新终端）
+./build/server    # 启动服务端
+./build/client    # 启动客户端（新终端）
 ```
+
+### 构建选项
+
+| 选项 | 默认 | 说明 |
+| --- | --- | --- |
+| `BUILD_EXAMPLES` | ON | 构建 client/server 及演示程序 |
+| `BUILD_TESTS` | ON | 构建 GoogleTest 单元测试 |
+| `WITH_FLOWCORO` | OFF | 构建可选的 flowcoro 协程集成（需 C++20，通过 FetchContent 拉取 flowcoro） |
+
+### 运行单元测试
+
+```bash
+ctest --test-dir build --output-on-failure
+```
+
+单元测试覆盖 AES-GCM 往返/篡改检测、RSA 加解密、签名验签（含篡改拒绝）以及
+完整的认证型会话密钥交换。
+
+### 结合 flowcoro（可选）
+
+[flowcoro](https://github.com/caixuf/flowcoro) 是一个 C++20 协程运行时。由于系统
+websocketpp 0.8.x 无法在 C++20 下编译，本集成只把与 websocketpp 无关的 RSA/AES
+**计算**卸载到 flowcoro 线程池（加密核心类在 C++17/C++20 下均可编译）：
+
+```bash
+cmake -S . -B build -DWITH_FLOWCORO=ON
+cmake --build build -j
+./build/integration/flowcoro/flowcoro_async_crypto
+```
+
+集成层提供 `flowcoro::Task<T>` 封装（见
+`integration/flowcoro/include/cryptolink/async_crypto.h`），可用顺序的 `co_await`
+表达"生成密钥 → 加密会话密钥 → 收发"等异步加密流程，而不阻塞调用线程。
 
 ## 使用示例
 
@@ -165,10 +198,27 @@ client.sendEncryptedMessage("Hello, encrypted world!");
 ## 安全性说明
 
 1. **密钥长度**: RSA-2048, AES-256 提供足够的安全强度
-2. **密钥管理**: 密钥仅在内存中存储，连接结束后自动销毁
-3. **随机性**: 使用 Crypto++ 的安全随机数生成器
-4. **消息完整性**: 支持数字签名验证消息完整性
-5. **Forward Secrecy**: 每次连接使用独立的会话密钥
+2. **认证加密**: AES-256-GCM 提供机密性与完整性（AEAD），每条消息独立随机 nonce
+3. **握手认证**: 会话密钥经 RSA-OAEP 加密传输，并由客户端私钥签名、服务端用客户端公钥验签
+4. **密钥管理**: 密钥仅在内存中存储，连接结束后自动销毁
+5. **随机性**: 使用 Crypto++ 的安全随机数生成器
+6. **失败可区分**: 解密/验签失败抛出 `CryptoError`，不再静默返回空串
+7. **Forward Secrecy**: 每次连接使用独立的会话密钥
+
+> 说明：当前握手认证依赖对端公钥的真实性。若要完全抵御中间人攻击，仍建议在
+> `wss://`（TLS）之上运行，或引入证书/公钥指纹预置（pinning）。
+
+## 开发计划
+
+- [x] AES-256-GCM 认证加密（替换固定 IV 的 CBC）
+- [x] 握手会话密钥签名认证
+- [x] 服务端会话状态线程安全
+- [x] GoogleTest 单元测试覆盖
+- [x] GitHub Actions 持续集成
+- [x] 可选 flowcoro 协程集成
+- [ ] 完整的 TLS(`wss://`) 支持
+- [ ] 证书/公钥指纹预置（pinning）
+- [ ] 添加更多加密算法支持 (ECC, ChaCha20)
 
 ## 性能特性
 
@@ -176,15 +226,6 @@ client.sendEncryptedMessage("Hello, encrypted world!");
 - **最小握手**: 优化的密钥交换流程
 - **多线程**: 支持并发连接处理
 - **内存管理**: 智能指针管理，防止内存泄漏
-
-## 开发计划
-
-- [ ] 添加更多加密算法支持 (ECC, ChaCha20)
-- [ ] 实现完整的 TLS 握手
-- [ ] 添加连接认证机制
-- [ ] 性能基准测试
-- [ ] 单元测试覆盖
-- [ ] 文档完善
 
 ## 许可证
 
