@@ -9,8 +9,8 @@ namespace {
 // GCM 推荐的 nonce 长度为 12 字节，认证标签为 16 字节。
 constexpr size_t kGcmNonceSize = 12;
 constexpr size_t kGcmTagSize = 16;
-constexpr size_t kAesKeySize = 32; // AES-256
-} // namespace
+constexpr size_t kAesKeySize = 32;  // AES-256
+}  // namespace
 
 AESKey::AESKey() = default;
 
@@ -58,27 +58,21 @@ bool AESKey::setRemotePublicKey(const std::string& keyString, const std::string&
 }
 
 std::string AESKey::getLocalKey() {
-    return localKey + ":" + localIV; // 握手时传输：key:iv
+    return localKey + ":" + localIV;  // 握手时传输：key:iv
 }
 
 std::string AESKey::base64Encode(const std::string& data) const {
     std::string encoded;
     StringSource ss(data, true,
-        new Base64Encoder(
-            new StringSink(encoded),
-            false // 不换行，便于放入 JSON
-        )
-    );
+                    new Base64Encoder(new StringSink(encoded),
+                                      false  // 不换行，便于放入 JSON
+                                      ));
     return encoded;
 }
 
 std::string AESKey::base64Decode(const std::string& data) const {
     std::string decoded;
-    StringSource ss(data, true,
-        new Base64Decoder(
-            new StringSink(decoded)
-        )
-    );
+    StringSource ss(data, true, new Base64Decoder(new StringSink(decoded)));
     return decoded;
 }
 
@@ -95,16 +89,12 @@ std::string AESKey::aesEncrypt(const std::string& plaintext, const std::string& 
 
         std::string cipherAndTag;
         GCM<AES>::Encryption encryption;
-        encryption.SetKeyWithIV((const byte*)keyDecoded.data(), keyDecoded.size(),
-                                nonce, sizeof(nonce));
+        encryption.SetKeyWithIV((const byte*)keyDecoded.data(), keyDecoded.size(), nonce,
+                                sizeof(nonce));
 
         StringSource ss(plaintext, true,
-            new AuthenticatedEncryptionFilter(encryption,
-                new StringSink(cipherAndTag),
-                false,
-                kGcmTagSize
-            )
-        );
+                        new AuthenticatedEncryptionFilter(encryption, new StringSink(cipherAndTag),
+                                                          false, kGcmTagSize));
 
         // 组装 nonce || (ciphertext + tag) 后再 Base64
         std::string blob(reinterpret_cast<char*>(nonce), sizeof(nonce));
@@ -132,17 +122,14 @@ std::string AESKey::aesDecrypt(const std::string& ciphertext, const std::string&
     try {
         std::string recovered;
         GCM<AES>::Decryption decryption;
-        decryption.SetKeyWithIV((const byte*)keyDecoded.data(), keyDecoded.size(),
-                                nonce, kGcmNonceSize);
+        decryption.SetKeyWithIV((const byte*)keyDecoded.data(), keyDecoded.size(), nonce,
+                                kGcmNonceSize);
 
         // AuthenticatedDecryptionFilter 在标签校验失败时抛出 HashVerificationFailed
         StringSource ss(cipherAndTag, true,
-            new AuthenticatedDecryptionFilter(decryption,
-                new StringSink(recovered),
-                AuthenticatedDecryptionFilter::DEFAULT_FLAGS,
-                kGcmTagSize
-            )
-        );
+                        new AuthenticatedDecryptionFilter(
+                            decryption, new StringSink(recovered),
+                            AuthenticatedDecryptionFilter::DEFAULT_FLAGS, kGcmTagSize));
 
         return recovered;
     } catch (const Exception& e) {

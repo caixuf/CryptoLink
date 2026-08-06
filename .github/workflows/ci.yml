@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+
+jobs:
+  build-and-test:
+    name: Build & Test (Ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config \
+            libcrypto++-dev libjsoncpp-dev libwebsocketpp-dev \
+            libboost-system-dev libboost-thread-dev libgtest-dev
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON -DBUILD_EXAMPLES=ON
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Run unit tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Run legacy crypto self-checks
+        run: |
+          ./build/crypto_test
+          ./build/simple_test
+
+  format-check:
+    name: clang-format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: sudo apt-get update && sudo apt-get install -y clang-format
+
+      - name: Check formatting of core sources
+        run: |
+          clang-format --dry-run --Werror \
+            src/AESKey.cpp src/RSAKey.cpp \
+            src/CryptoWebSocketClient.cpp src/CryptoWebSocketServer.cpp \
+            include/AESKey.h include/RSAKey.h include/CryptoError.h \
+            include/CryptoWebSocketClient.h include/CryptoWebSocketServer.h

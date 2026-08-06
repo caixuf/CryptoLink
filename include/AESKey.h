@@ -13,7 +13,7 @@ class AESKey : public SymmetricalEncryptionInterface {
 public:
     AESKey();
     ~AESKey();
-    
+
     bool generateRawKey() override;
     std::string encryptWithLocal(const std::string& plaintext) override;
     std::string decryptWithLocal(const std::string& ciphertext) override;
@@ -23,10 +23,10 @@ public:
     std::string getLocalKey() override;
 
 private:
-    std::string localKey;    // Base64 编码的本地会话密钥（32 字节）
-    std::string localIV;     // 保留字段：握手时随密钥一起传输（GCM 每条消息使用独立随机 nonce）
-    std::string remoteKey;   // Base64 编码的远程会话密钥
-    std::string remoteIV;    // 保留字段（同上）
+    std::string localKey;  // Base64 编码的本地会话密钥（32 字节）
+    std::string localIV;  // 保留字段：握手时随密钥一起传输（GCM 每条消息使用独立随机 nonce）
+    std::string remoteKey;  // Base64 编码的远程会话密钥
+    std::string remoteIV;   // 保留字段（同上）
 
     mutable AutoSeededRandomPool rng;
 
@@ -46,4 +46,4 @@ private:
     std::string aesDecrypt(const std::string& ciphertext, const std::string& key) const;
 };
 
-#endif // AES_KEY_H
+#endif  // AES_KEY_H

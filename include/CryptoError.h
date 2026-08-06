@@ -9,8 +9,7 @@
 // 区分"空明文"与"解密失败/数据被篡改"这两种完全不同的情况。
 class CryptoError : public std::runtime_error {
 public:
-    explicit CryptoError(const std::string& message)
-        : std::runtime_error(message) {}
+    explicit CryptoError(const std::string& message) : std::runtime_error(message) {}
 };
 
-#endif // CRYPTO_ERROR_H
+#endif  // CRYPTO_ERROR_H

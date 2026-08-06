@@ -4,38 +4,29 @@
 #include <memory>
 #include <jsoncpp/json/json.h>
 
-CryptoWebSocketClient::CryptoWebSocketClient() 
-    : isConnected(false), handshakeComplete(false) {
-    
+CryptoWebSocketClient::CryptoWebSocketClient() : isConnected(false), handshakeComplete(false) {
     // 初始化加密对象
     rsaKey = std::make_unique<RSAKey>();
     aesKey = std::make_unique<AESKey>();
-    
+
     // 生成密钥对
     rsaKey->generateKeyPair();
     aesKey->generateRawKey();
-    
+
     // 配置WebSocket客户端
     wsClient.set_access_channels(websocketpp::log::alevel::all);
     wsClient.clear_access_channels(websocketpp::log::alevel::frame_payload);
     wsClient.init_asio();
-    
+
     // 设置回调函数
-    wsClient.set_open_handler([this](websocketpp::connection_hdl hdl) {
-        this->onOpen(hdl);
-    });
-    
-    wsClient.set_close_handler([this](websocketpp::connection_hdl hdl) {
-        this->onClose(hdl);
-    });
-    
-    wsClient.set_message_handler([this](websocketpp::connection_hdl hdl, message_ptr msg) {
-        this->onMessage(hdl, msg);
-    });
-    
-    wsClient.set_fail_handler([this](websocketpp::connection_hdl hdl) {
-        this->onFail(hdl);
-    });
+    wsClient.set_open_handler([this](websocketpp::connection_hdl hdl) { this->onOpen(hdl); });
+
+    wsClient.set_close_handler([this](websocketpp::connection_hdl hdl) { this->onClose(hdl); });
+
+    wsClient.set_message_handler(
+        [this](websocketpp::connection_hdl hdl, message_ptr msg) { this->onMessage(hdl, msg); });
+
+    wsClient.set_fail_handler([this](websocketpp::connection_hdl hdl) { this->onFail(hdl); });
 }
 
 CryptoWebSocketClient::~CryptoWebSocketClient() {
@@ -46,15 +37,15 @@ bool CryptoWebSocketClient::connect(const std::string& uri) {
     try {
         websocketpp::lib::error_code ec;
         client::connection_ptr con = wsClient.get_connection(uri, ec);
-        
+
         if (ec) {
             std::cerr << "连接创建失败: " << ec.message() << std::endl;
             return false;
         }
-        
+
         connectionHandle = con->get_handle();
         wsClient.connect(con);
-        
+
         return true;
     } catch (const std::exception& e) {
         std::cerr << "连接异常: " << e.what() << std::endl;
@@ -75,22 +66,22 @@ bool CryptoWebSocketClient::sendEncryptedMessage(const std::string& message) {
         std::cerr << "客户端未连接或握手未完成" << std::endl;
         return false;
     }
-    
+
     try {
         // 使用AES会话密钥加密消息
         std::string encryptedData = aesKey->encryptWithLocal(message);
-        
+
         Message msg = {ENCRYPTED_DATA, encryptedData, ""};
         std::string serialized = serializeMessage(msg);
-        
+
         websocketpp::lib::error_code ec;
         wsClient.send(connectionHandle, serialized, websocketpp::frame::opcode::text, ec);
-        
+
         if (ec) {
             std::cerr << "发送消息失败: " << ec.message() << std::endl;
             return false;
         }
-        
+
         return true;
     } catch (const std::exception& e) {
         std::cerr << "发送加密消息异常: " << e.what() << std::endl;
@@ -103,9 +94,7 @@ void CryptoWebSocketClient::setMessageCallback(std::function<void(const std::str
 }
 
 void CryptoWebSocketClient::run() {
-    clientThread = std::thread([this]() {
-        wsClient.run();
-    });
+    clientThread = std::thread([this]() { wsClient.run(); });
 }
 
 void CryptoWebSocketClient::stop() {
@@ -129,7 +118,7 @@ void CryptoWebSocketClient::onClose(websocketpp::connection_hdl hdl) {
 
 void CryptoWebSocketClient::onMessage(websocketpp::connection_hdl hdl, message_ptr msg) {
     std::string payload = msg->get_payload();
-    
+
     if (!handshakeComplete) {
         handleHandshakeMessage(payload);
     } else {
@@ -157,10 +146,10 @@ void CryptoWebSocketClient::performHandshake() {
     // 发送公钥请求
     Message msg = {PUBLIC_KEY_REQUEST, "", ""};
     std::string serialized = serializeMessage(msg);
-    
+
     websocketpp::lib::error_code ec;
     wsClient.send(connectionHandle, serialized, websocketpp::frame::opcode::text, ec);
-    
+
     if (ec) {
         std::cerr << "发送公钥请求失败: " << ec.message() << std::endl;
     }
@@ -168,7 +157,7 @@ void CryptoWebSocketClient::performHandshake() {
 
 void CryptoWebSocketClient::handleHandshakeMessage(const std::string& message) {
     Message msg = parseMessage(message);
-    
+
     switch (msg.type) {
         case PUBLIC_KEY_RESPONSE: {
             try {
@@ -190,7 +179,8 @@ void CryptoWebSocketClient::handleHandshakeMessage(const std::string& message) {
 
                 Message sessionMsg = {SESSION_KEY, encryptedSessionKey, signature};
                 std::string sessionSerialized = serializeMessage(sessionMsg);
-                wsClient.send(connectionHandle, sessionSerialized, websocketpp::frame::opcode::text, ec);
+                wsClient.send(connectionHandle, sessionSerialized, websocketpp::frame::opcode::text,
+                              ec);
 
                 handshakeComplete = true;
                 std::cout << "握手完成！" << std::endl;

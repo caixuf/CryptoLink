@@ -16,17 +16,12 @@ CryptoWebSocketServer::CryptoWebSocketServer() : isRunning(false) {
     wsServer.set_reuse_addr(true);
 
     // 设置回调函数
-    wsServer.set_open_handler([this](websocketpp::connection_hdl hdl) {
-        this->onOpen(hdl);
-    });
+    wsServer.set_open_handler([this](websocketpp::connection_hdl hdl) { this->onOpen(hdl); });
 
-    wsServer.set_close_handler([this](websocketpp::connection_hdl hdl) {
-        this->onClose(hdl);
-    });
+    wsServer.set_close_handler([this](websocketpp::connection_hdl hdl) { this->onClose(hdl); });
 
-    wsServer.set_message_handler([this](websocketpp::connection_hdl hdl, message_ptr msg) {
-        this->onMessage(hdl, msg);
-    });
+    wsServer.set_message_handler(
+        [this](websocketpp::connection_hdl hdl, message_ptr msg) { this->onMessage(hdl, msg); });
 }
 
 CryptoWebSocketServer::~CryptoWebSocketServer() {
@@ -58,8 +53,8 @@ void CryptoWebSocketServer::stop() {
     }
 }
 
-std::shared_ptr<CryptoWebSocketServer::ClientSession>
-CryptoWebSocketServer::getSession(websocketpp::connection_hdl hdl) {
+std::shared_ptr<CryptoWebSocketServer::ClientSession> CryptoWebSocketServer::getSession(
+    websocketpp::connection_hdl hdl) {
     std::lock_guard<std::mutex> lock(sessionsMutex);
     auto it = sessions.find(hdl);
     return it == sessions.end() ? nullptr : it->second;
@@ -81,7 +76,8 @@ void CryptoWebSocketServer::broadcastEncryptedMessage(const std::string& message
     }
 }
 
-bool CryptoWebSocketServer::sendEncryptedMessage(websocketpp::connection_hdl hdl, const std::string& message) {
+bool CryptoWebSocketServer::sendEncryptedMessage(websocketpp::connection_hdl hdl,
+                                                 const std::string& message) {
     auto session = getSession(hdl);
     if (!session || !session->handshakeComplete) {
         std::cerr << "客户端未找到或握手未完成" << std::endl;
@@ -110,14 +106,13 @@ bool CryptoWebSocketServer::sendEncryptedMessage(websocketpp::connection_hdl hdl
     }
 }
 
-void CryptoWebSocketServer::setMessageCallback(std::function<void(websocketpp::connection_hdl, const std::string&)> callback) {
+void CryptoWebSocketServer::setMessageCallback(
+    std::function<void(websocketpp::connection_hdl, const std::string&)> callback) {
     messageCallback = callback;
 }
 
 void CryptoWebSocketServer::run() {
-    serverThread = std::thread([this]() {
-        wsServer.run();
-    });
+    serverThread = std::thread([this]() { wsServer.run(); });
 }
 
 void CryptoWebSocketServer::onOpen(websocketpp::connection_hdl hdl) {
@@ -157,7 +152,8 @@ void CryptoWebSocketServer::onMessage(websocketpp::connection_hdl hdl, message_p
     }
 }
 
-void CryptoWebSocketServer::handleHandshakeMessage(websocketpp::connection_hdl hdl, const std::string& message) {
+void CryptoWebSocketServer::handleHandshakeMessage(websocketpp::connection_hdl hdl,
+                                                   const std::string& message) {
     Message msg = parseMessage(message);
     auto session = getSession(hdl);
     if (!session) {
